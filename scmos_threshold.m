@@ -1,0 +1,113 @@
+
+
+ 
+    filename='balanced2channelintensity8intensity30exposure100ms-01.tif';
+  
+idx=1;
+chipPars.inputImage = filename;
+[image] = Core.load_image(filename);
+chipParsSpec.gain = 0.8103;
+chipParsSpec.adFactor = 1;
+chipParsSpec.countOffset = 100.113;
+chipParsSpec.shapeParameter=0.0517;
+chipParsSpec.roNoise = 1.363;%here ronoise is scale parameter and shape is zero
+alphaStar = 0.01; % tnr control
+chipParsSpec.pixelsize = 160;
+
+% T = 64;
+% matrixBlocks = reshape(permute(reshape( double(image.imAverage),T,size( image.imAverage,1)/T,T,[]),[1,3,2,4]),T,T,[]);
+% %matrixBlocks = reshape(permute(reshape( double(registeredImage),T,size( registeredImage,1)/T,T,[]),[1,3,2,4]),T,T,[]);
+% 
+% matrixBlocks=1;
+% 
+% 
+% N = size(matrixBlocks,3);
+% scores = nan(1,size(matrixBlocks,3));
+% lambdaPars = nan(1,size(matrixBlocks,3));
+% intthreshPars = nan(1,size(matrixBlocks,3));
+% 
+% meanbox=zeros(1,size(matrixBlocks,3));
+% statsAll = cell(1,size(matrixBlocks,3));
+% 
+
+ images.imAverage = image.imAverage;
+    
+    %meanbox(idx)=mean(image2.imAverage(:));
+ gain = chipParsSpec.gain;
+adFactor = chipParsSpec.adFactor;
+countOffset = chipParsSpec.countOffset;
+offset = chipParsSpec.countOffset;
+roNoise = chipParsSpec.roNoise;
+shapep=chipParsSpec.shapeParameter;
+pValThresh=0.01;
+import Core.estimate_lambda;
+import Core.pdf_cdf_scmos;
+
+disp('Estimating lambda_bg.');
+[lambdaBg ,intThreshBg,structRes] = ...
+    estimate_lambda(images.imAverage(:), gain, shapep,adFactor, countOffset, roNoise,pValThresh);
+disp(' ')
+
+    import Core.calc_bounds;
+    [L, U, EX, STD] = calc_bounds(lambdaBg,gain,shapep,adFactor,offset,roNoise);
+    
+    % that give intensities to calculate over
+    intensities = [ceil(L):floor(U)]+0.5; % take edge point of each box, so +0.5
+    import Core.pdf_cdf_from_characteristic_fun_scmos;
+    % cdf, in this case do not need to be truncated
+    [pdf, cdf] = pdf_cdf_from_characteristic_fun_scmos(intensities,lambdaBg,gain,shapep,adFactor,offset,roNoise);
+    
+    % find the value where pvalue=1-cdf > pValThresh
+    intThresh = find(1-cdf < pValThresh,1,'first');
+%     intensities(find(1-cdf >pValThresh,1,'last'));
+
+    intThresh = intensities(intThresh);
+
+%     intThresh = inverse_cdf_emccd( 1-pValThresh , lambdaBg , chipPars , N , tol);
+%     intThresh = floor(intThresh)-0.5;  % since intensities are integers 
+                                       % in experimental images, 
+                                       % we set the threshold to be a half-integer
+   
+    % Binarize using intensity threshold
+    binarizedImage = imbinarize(image.imAverage,intThresh);
+
+     %[lambdaBg, intThreshBg, stats] = emccdpia_estimation(chipParsSpec,outFig2,image2,alphaStar,0);
+    %scores(idx) = min(stats.chi2Score);
+    %lambdaPars(idx) = lambdaBg; 
+  %figure,imagesc(binarizedImage)
+
+binarizedImage = double(binarizedImage);  % Convert to double if needed
+
+% Display the binarized image as black and white
+imshow(binarizedImage, 'InitialMagnification', 'fit');
+colormap(gray(2));  % Set colormap to black and white (2 levels)
+%colorbar;
+
+    intthreshPars(idx) = intThreshBg;
+   % statsAll{idx} = stats;
+
+    toc
+
+%%%%%%%%%%%%%%%%%%%%%
+[rows, cols] = size(binarizedImage);
+rgbImage = zeros(rows, cols, 3, 'uint8');
+
+% Set green channel to 255 where the image is binarized (foreground)
+rgbImage(:,:,2) = uint8(binarizedImage) * 255;
+
+% Display the result
+
+
+
+pixelsize = 160;
+    nPixels = 1e4/pixelsize;
+x = [5, 5 + nPixels ];
+    y = [0.9*size( images.imAverage,1) , 0.9*size( images.imAverage,1)];
+    plot(x,y,'Linewidth',4,'Color','white')
+    text(0,0.05,'10 microns','Fontsize',10,'Color','white','Units','normalized')
+%     title('(a)','Interpreter','latex')
+    set(gcf, 'InvertHardCopy', 'off');
+    set(gcf,'color','white');
+
+    imshow(rgbImage);
+    

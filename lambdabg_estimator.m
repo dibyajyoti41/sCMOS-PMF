@@ -1,0 +1,139 @@
+
+clear;
+
+   filename='balanced2channelintensity8intensity30exposure100ms-01.tif';
+    
+chipPars.inputImage = filename;
+[image] = Core.load_image(filename);
+
+     chipParsSpec.gain = 0.8103; 
+     chipParsSpec.adFactor = 1;
+     chipParsSpec.countOffset = 100.113;
+     chipParsSpec.shapeParameter = 0.051;
+     chipParsSpec.roNoise = 1.36;%here ronoise is scale parameter and shape is zero
+     alphaStar = 0.01; % tnr control
+     chipParsSpec.pixelsize = 160;
+
+T = 64;
+matrixBlocks = reshape(permute(reshape( double(image.imAverage),T,size( image.imAverage,1)/T,T,[]),[1,3,2,4]),T,T,[]);
+warning('off');
+
+N = size(matrixBlocks,3);
+scores = nan(1,size(matrixBlocks,3));
+lambdaPars = nan(1,size(matrixBlocks,3));
+intthreshPars = nan(1,size(matrixBlocks,3));
+
+meanbox=zeros(1,size(matrixBlocks,3));
+statsAll = cell(1,size(matrixBlocks,3));
+
+for idx = 1:size(matrixBlocks,3)
+
+    image2.imAverage = matrixBlocks(:,:,idx);
+    
+    tic
+     [lambdaBg, intThreshBg, stats] = scmospmf_estimation(chipParsSpec,image2,alphaStar,0);
+    
+    scores(idx) = min(stats.chi2Score);
+   lambdaPars(idx) = lambdaBg; 
+     
+
+    intthreshPars(idx) = intThreshBg;
+    statsAll{idx} = stats;
+
+    toc
+
+end
+%idx1=13;
+
+chkpoint=0;
+if (chkpoint)
+f = figure;
+nexttile
+imagesc(reshape(intthreshPars,[sqrt(N) sqrt(N)]));colorbar;colormap gray
+title(['a) $N_{icr}^{bg}$ scores'],'Interpreter','latex')
+
+
+nexttile
+imagesc(reshape(lambdaPars,[sqrt(N) sqrt(N)]));colorbar;colormap gray
+title(['b) Estimates of $\lambda_{bg}$'],'Interpreter','latex')
+
+nexttile;imagesc(reshape(scores,[sqrt(N) sqrt(N)]));colorbar;colormap gray
+title(['c) $\chi^2$ scores'],'Interpreter','latex')
+
+
+
+nexttile
+imagesc(logical(reshape(cellfun(@(x) x.passthresh,statsAll),[sqrt(N) sqrt(N)])));colorbar('YTick',[0 1]);%colormap gray
+title('d) Passed the goodness-of-fit test','Interpreter','latex')
+print(outFigS,'-depsc','-r300');
+end
+
+for idx1=101:101
+    %idx1=3
+    figure
+    tiledlayout(1,2,'TileSpacing','compact','Padding','compact')
+    nexttile
+    pixelsize = 160;
+
+    sampIm = mat2gray(image.imAverage);
+    minInt = min(sampIm(:));
+    medInt = median(sampIm(:));
+    maxInt = max(sampIm(:));
+    J = imadjust(sampIm,[minInt min(1,4*medInt)]);
+    matrixBlocksJ = reshape(permute(reshape( double(J),T,size( J,1)/T,T,[]),[1,3,2,4]),T,T,[]);
+ 
+    IM3 = padarray(matrixBlocksJ,[2 2],nan,'both');
+    out = imtile(pagetranspose(IM3),'thumbnailsize',[64 64],'BorderSize', 2, 'BackgroundColor', 'cyan');
+%     figure,imshow(out')
+
+    imshow(pagetranspose(out),'InitialMagnification','fit');
+    colormap winter
+    %imshow(images.imAverage/max(images.imAverage(:)))
+    hold on    
+    % scale bar (ten microns in number of pixels)
+    nPixels = 1e4/pixelsize;
+    x = [5, 5 + nPixels ];
+    y = [0.9*size(sampIm,1) , 0.9*size(sampIm,1)];
+    plot(x,y,'Linewidth',8,'Color',[1 1 1])
+    text(0,0.05,'10 microns','Fontsize',10,'Color',[1 1 1],'Units','normalized')
+    title('(a)','Interpreter','latex')
+
+structRes = statsAll{idx1};
+
+intThreshBg =   intthreshPars(idx1);
+lambdaBg=lambdaPars(idx1);
+histAll = statsAll{idx1}.histAll;
+stats = statsAll{idx1}.stats;
+    nexttile    
+binPos = 1:structRes.LU(2) + 0.5;
+[minVal , idx] = min(abs(binPos - intThreshBg));
+h1 = bar(binPos(1:idx),histAll(1:idx),1); 
+set(h1,'FaceColor',[0.4 0.6 0.9])
+set(h1,'EdgeColor','none')
+hold on
+h2 = bar(binPos(idx+1:end),histAll(idx+1:end-1),1); 
+set(h2,'FaceColor',[1 0.5 0.3])
+set(h2,'EdgeColor','none')
+hold on
+binCountsFit = stats.nBg.*structRes.pdf;
+% binPos = binEdges(1:end-1) + diff(binEdges)/2;
+plot(binCountsFit,'--','Color','black','LineWidth',2)
+
+% Set figure labels, etc
+xlabel('Image counts','Interpreter','latex')
+ylabel('Histogram counts','Interpreter','latex')
+% set(gca,'Fontsize',15)
+% axis([30 80 0 46000])
+[a,b] = ind2sub([16 16],idx1);
+title(['(b) Fit for tile \{',num2str(a),',',num2str(b) , '\}'],'Interpreter','latex')
+
+pbaspect([1 0.8 0.8])
+legendEntry = strcat(['Fit, $\lambda_{bg} =  ' num2str(lambdaBg,2) ', N_{icr}^{bg}=' num2str(intThreshBg) '$']);
+lgnd = legend('Image counts, true background','Image counts, not true background',legendEntry,'Interpreter','latex');
+lgnd.Layout.Tile = 'south';
+end
+
+% adjustedlambdaPars=lambdaPars*(169/121)/0.875;
+
+
+
