@@ -1,79 +1,83 @@
+sz = 1024;
 
-meanimage=zeros(1024,1024);
-varimage=zeros(1024,1024);
-p1=zeros(100);
-numfiles =10;
+mz=200;
+
+
+numf = [10 20 30 40 50 60 70 80 90 100];
+
+numfiles = length(numf);
+
+meanimage=zeros(mz,mz,numfiles);
+varimage=zeros(mz,mz,numfiles);
+
+
+
+inis = 20;
+fins = 40;
 
 for k = 1:numfiles
- 
-   filename = sprintf('balanced2channel%d-01.tif',10*k);
- 
-numimgs = size(imfinfo(filename),1);
-numimgs=numimgs/2;
-sz=1024;
-img = zeros(sz,sz);
+    filename = sprintf('balanced2channel%d-01.tif', numf(k));
 
-img2 =zeros(sz,sz);
+    img_mean = zeros(mz, mz);
+    offs=100.16*ones(mz,mz);
+    img_var = zeros(mz, mz);
+    count = 0;
 
-
-varimg = zeros(sz,sz);
-
-
-
-for k1 = 1 : numimgs
-  thisImage  = imread(filename,2*k1);
-    thisImage=double(thisImage);
-   
+    for k1 = inis:fins
+        thisImage = double(imread(filename, 2 * k1));
+         az=size(thisImage);
+        thisImagem=thisImage((az(1)/2)-(mz/2)+1:(az(1)/2)+(mz/2),(az(2)/2)-(mz/2)+1:(az(2)/2)+(mz/2));
     
+
+
+        % Compute mean and variance incrementally
+        count = count + 1;
+        delta = thisImagem - img_mean;
+        img_mean = img_mean + delta / count;
+        img_var = img_var + delta .* (thisImagem - img_mean);
+
     
-    
-    img=img+thisImage;
-    img2=img2+thisImage.*thisImage;
     
 end
 
-img=img/numimgs;
 
-img2=img2/numimgs;
+    img_var = img_var / (count - 1);
 
-varimg=img2-img.*img;
-
-
-meanimage(:,:,k)=img;
-varimage(:,:,k)=varimg;
-
+    meanimage(:,:,k) = img_mean-offs;
+    varimage(:,:,k) = img_var;
+    
+    p = polyfit(img_mean(:)-offs(:), img_var(:), 1);
+    fprintf('Gain for file %s: %f\n', filename, p(1));
 end
-
 
 figure
-for k=1:numfiles
+xlabel('E[n_{ic}]-\Delta')
+ylabel('Var[n_{ic}]')
 
+for k=1:numfiles
 
 hold on
 
 plot(meanimage(:,:,k),varimage(:,:,k),'o')
 
-end
 
+end
+%hold off
 
 p=polyfit(meanimage(:,:,:),varimage(:,:,:),1);
 
 hold on
 
-m=p(1);
-x =70:10:1500; 
 
-x1 = 70; % Specify your starting x
-y1 = 70;  % Specify your starting y
+  m=p(1);
+x=min(meanimage(:)):max(meanimage(:));
+%x=-50:max(meanimage(:));
+ymin=min(varimage(:));
+y3=p(1)*x+p(2);
+plot(x,y3,'LineWidth',2);
 
-y = m*(x - x1) + y1;
-
-plot(x,y,'LineWidth',3);
-ylim([0 1800]);
-hold off
-
-xlabel('Mean','Interpreter','latex','FontSize',15)
-ylabel('Variance','Interpreter','latex','FontSize',15)
-hold off
+p
 
 
+%g=[g p(1)];
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
